@@ -1,0 +1,72 @@
+// Prisma schema for future account/history features.
+// NOT required for the core single-URL audit flow, which works statelessly.
+// Run `npx prisma migrate dev` only once DATABASE_URL is configured.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  createdAt     DateTime  @default(now())
+  projects      Project[]
+  subscriptions Subscription[]
+  usage         Usage[]
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  name      String
+  rootUrl   String
+  createdAt DateTime @default(now())
+  audits    Audit[]
+}
+
+model Audit {
+  id          String       @id @default(cuid())
+  projectId   String?
+  project     Project?     @relation(fields: [projectId], references: [id])
+  url         String
+  finalUrl    String
+  pageType    String
+  overallScore Int
+  reportJson  Json
+  createdAt   DateTime     @default(now())
+  issues      AuditIssue[]
+}
+
+model AuditIssue {
+  id             String   @id @default(cuid())
+  auditId        String
+  audit          Audit    @relation(fields: [auditId], references: [id])
+  severity       String
+  category       String
+  title          String
+  recommendation String
+}
+
+model Usage {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  ipHash    String?
+  date      DateTime @default(now())
+  count     Int      @default(1)
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  planId    String
+  status    String
+  createdAt DateTime @default(now())
+}
