@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GEO Visibility Tracker</title>
+<style>
+:root{--bg:#f3f5f8;--card:#fff;--ink:#14202e;--mute:#5d6b7c;--line:#dce2ea;--acc:#0b5fff;--good:#0d8a4f;--mid:#b86e00;--bad:#c42b2b}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1620;--card:#172230;--ink:#e9eef5;--mute:#93a1b3;--line:#273648;--acc:#5b9bff;--good:#3ddc97;--mid:#f0b429;--bad:#ff7b7b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.5 "Segoe UI",system-ui,sans-serif}
+.w{max-width:1100px;margin:auto;padding:20px 14px 60px}h1{margin:0 0 14px;font-size:24px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:12px}
+h2{margin:0 0 10px;font-size:15px}.g{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+label{font-size:12px;color:var(--mute)}input,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+button{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer}
+.k{display:flex;flex-wrap:wrap;gap:22px}.k b{font-size:30px;display:block}.k span{color:var(--mute);font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:6px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-weight:500}
+.t{overflow-x:auto}.l{cursor:pointer;color:var(--acc);text-decoration:underline}.s-positive{color:var(--good)}.s-negative{color:var(--bad)}.s-neutral,.s-unverified{color:var(--mid)}
+#ev{position:fixed;right:0;top:0;bottom:0;width:min(520px,100%);background:var(--card);border-left:1px solid var(--line);padding:16px;overflow:auto;display:none;z-index:9}
+mark{background:#ffe38a;color:#000}.m{color:var(--mute);font-size:12px}pre{white-space:pre-wrap;font:inherit}
+</style></head><body><div class="w">
+<h1>GEO Visibility Tracker</h1>
+<div class="c"><div class="g">
+<div><label>Project name</label><input id="project" value="demo"></div><div><label>Brand</label><input id="brand"></div>
+<div><label>Domain</label><input id="domain" placeholder="example.com"></div><div><label>Category</label><input id="category"></div>
+<div><label>Competitors (comma separated)</label><input id="comps"></div></div>
+<label>Prompts, one per line</label><textarea id="prompts" rows="5" placeholder="best CRM for small business&#10;X vs Y"></textarea>
+<label>Forum search terms, one per line (optional)</label><textarea id="sq" rows="2"></textarea>
+<p><button onclick="run()">Run analysis</button> <span id="st" class="m"></span></p></div>
+<div id="out" style="display:none">
+<div class="c"><div class="k" id="kpi"></div><p class="m" id="meth"></p></div>
+<div class="g"><div class="c"><h2>By AI engine</h2><div class="t"><table id="eng"></table></div></div>
+<div class="c"><h2>Share of voice</h2><div class="t"><table id="sov"></table></div></div></div>
+<div class="c"><h2>Citations: where answers got their information</h2><div class="t"><table id="cit"></table></div></div>
+<div class="c"><h2>Reddit, Quora and forums</h2><div class="t"><table id="soc"></table></div></div>
+<div class="c"><h2>Every answer (click for the full text)</h2><div class="t"><table id="ans"></table></div></div></div>
+<div id="ev"></div></div>
+<script>
+const $=i=>document.getElementById(i),E=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const lines=v=>v.split("\n").map(x=>x.trim()).filter(Boolean);
+async function run(){
+ const b={project:$("project").value,brand:$("brand").value,domain:$("domain").value,category:$("category").value,
+  competitors:$("comps").value.split(",").map(x=>x.trim()).filter(Boolean),prompts:lines($("prompts").value),social_queries:lines($("sq").value)};
+ if(!b.brand||!b.prompts.length){$("st").textContent="Brand and at least one prompt are required.";return}
+ const r=await(await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)})).json();
+ const t=setInterval(async()=>{const s=await(await fetch("/api/status?run="+r.run)).json();
+  $("st").textContent=s.finished?"Finished"+(s.errors.length?" with "+s.errors.length+" errors: "+s.errors[0]:""):`Collecting answers ${s.done}/${s.total}`;
+  if(s.finished){clearInterval(t);load()}},3000)}
+async function load(){
+ const d=await(await fetch("/api/report?project="+encodeURIComponent($("project").value))).json(); if(!d.run)return;
+ $("out").style.display="block";const br=d.cfg.brand;
+ const pos=d.sentiment.positive||0,neg=d.sentiment.negative||0,neu=d.sentiment.neutral||0,un=d.sentiment.unverified||0;
+ $("kpi").innerHTML=`<div><b>${d.visibility}%</b><span>Visibility (95% range ${d.ci[0]}-${d.ci[1]}%)</span></div><div><b>${d.sov[br]}%</b><span>Share of voice</span></div>
+ <div><b>${pos}/${neu}/${neg}</b><span>Sentiment pos/neutral/neg${un?` (+${un} unverified)`:""}</span></div><div><b>${d.brand_cited}</b><span>Answers citing your domain</span></div><div><b>${d.n}</b><span>Answers collected</span></div>`;
+ $("meth").textContent=`Run ${new Date(d.run*1000).toLocaleString()}. Mentions are exact-match counts in raw answers. Sentiment is model-labelled and kept only when its quote exists verbatim in the answer. AI answers vary between runs, so read the range, not just the point value.`;
+ $("eng").innerHTML="<tr><th>Engine</th><th>Answers</th><th>Mentioned</th></tr>"+Object.entries(d.by_engine).map(([k,v])=>`<tr><td>${k}</td><td>${v.n}</td><td>${Math.round(v.hits/v.n*100)}%</td></tr>`).join("");
+ $("sov").innerHTML="<tr><th>Brand</th><th>Share</th></tr>"+Object.entries(d.sov).map(([k,v])=>`<tr><td>${E(k)}</td><td>${v}%</td></tr>`).join("");
+ $("cit").innerHTML="<tr><th>Source domain</th><th>Times cited</th><th>Example URL</th><th>Answers</th></tr>"+d.cites.map(c=>`<tr><td>${E(c.domain)}</td><td>${c.count}</td><td><a href="${E(c.urls[0])}" target="_blank" rel="noopener">${E(c.urls[0].slice(0,60))}</a></td><td>${c.answers.slice(0,4).map(i=>`<span class="l" onclick="show(${i})">#${i}</span>`).join(" ")}</td></tr>`).join("");
+ $("soc").innerHTML="<tr><th>Platform</th><th>Post</th><th>Sentiment about brand</th><th>Evidence</th></tr>"+d.social.map(s=>`<tr><td>${s.platform}</td><td><a href="${E(s.url)}" target="_blank" rel="noopener">${E(s.title)}</a></td><td class="s-${s.sentiment}">${s.sentiment}</td><td>${E(s.quote)}</td></tr>`).join("");
+ $("ans").innerHTML="<tr><th>#</th><th>Engine</th><th>Prompt</th><th>Brand</th><th>Sentiment</th></tr>"+d.answers.map(a=>`<tr><td><span class="l" onclick="show(${a.id})">${a.id}</span></td><td>${a.engine}</td><td>${E(a.prompt)}</td><td>${a.mentioned?"yes":"no"}</td><td class="s-${a.sentiment}">${a.mentioned?a.sentiment:"-"}</td></tr>`).join("")}
+async function show(i){const a=await(await fetch("/api/answer/"+i)).json();
+ const urls=JSON.parse(a.urls).map(u=>`<li><a href="${E(u)}" target="_blank" rel="noopener">${E(u)}</a></li>`).join("");
+ $("ev").style.display="block";$("ev").innerHTML=`<button onclick="this.parentNode.style.display='none'">Close</button><h2>Answer #${a.id} from ${a.engine}</h2><p class="m">Prompt: ${E(a.prompt)}<br>Collected ${new Date(a.ts*1000).toLocaleString()}</p><pre>${E(a.text)}</pre><h2>Cited sources</h2><ul>${urls||"<li>None returned</li>"}</ul>`}
+</script></body></html>
